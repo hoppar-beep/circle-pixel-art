@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Circle Math Pixel Art Reveal</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: Arial, sans-serif; background: #f5f5f5; padding: 16px; color: #222; }
+  h1 { font-size: 20px; font-weight: 700; margin-bottom: 4px; color: #1a1a1a; }
+  .subtitle { font-size: 13px; color: #555; margin-bottom: 16px; }
+  .layout { display: flex; gap: 20px; flex-wrap: wrap; }
+  .left-panel { flex: 0 0 auto; }
+  .right-panel { flex: 1; min-width: 260px; }
+  canvas { border: 2px solid #ccc; border-radius: 8px; display: block; background: #fff; }
+  .progress-label { display: flex; justify-content: space-between; font-size: 13px; color: #555; margin-top: 8px; }
+  .progress-bar-outer { background: #e0e0e0; border-radius: 8px; height: 10px; margin: 4px 0 12px; }
+  .progress-bar-inner { background: #1D9E75; border-radius: 8px; height: 100%; transition: width 0.4s; }
+  .formula-box { background: #eef4fb; border-left: 4px solid #378ADD; padding: 10px 14px; font-size: 13px; color: #333; line-height: 1.8; }
+  .formula-box strong { color: #185FA5; }
+  .q-card { background: #fff; border: 1px solid #ddd; border-radius: 10px; padding: 14px 16px; margin-bottom: 10px; }
+  .q-card.correct { border-color: #1D9E75; background: #f0fdf8; }
+  .q-card.wrong { border-color: #E24B4A; background: #fff5f5; }
+  .q-label { font-size: 12px; color: #888; margin-bottom: 4px; }
+  .q-text { font-size: 15px; font-weight: 600; margin-bottom: 10px; color: #1a1a1a; }
+  .hint { font-size: 12px; color: #085041; background: #d8f5ec; border-radius: 6px; padding: 6px 10px; margin: 6px 0 6px; display: none; }
+  .choices { display: flex; flex-wrap: wrap; gap: 6px; }
+  .choice-btn { background: #f0f0f0; border: 1px solid #ccc; border-radius: 6px; padding: 7px 14px; font-size: 14px; cursor: pointer; color: #222; transition: background 0.15s; }
+  .choice-btn:hover:not(:disabled) { background: #e0e0e0; }
+  .choice-btn.correct-ans { background: #9FE1CB; border-color: #1D9E75; color: #085041; font-weight: 600; }
+  .choice-btn.wrong-ans { background: #F7C1C1; border-color: #E24B4A; color: #501313; }
+  .choice-btn:disabled { cursor: default; }
+  .try-again-btn { margin-top: 8px; display: inline-block; background: #fff; border: 1px solid #bbb; border-radius: 6px; padding: 6px 14px; font-size: 13px; cursor: pointer; color: #333; transition: background 0.15s; }
+  .try-again-btn:hover { background: #f0f0f0; }
+  .badge { font-size: 12px; font-weight: 600; padding: 2px 10px; border-radius: 6px; display: inline-block; margin-left: 8px; }
+  .badge-correct { background: #9FE1CB; color: #085041; }
+  .badge-wrong { background: #F7C1C1; color: #501313; }
+  .complete-msg { margin-top: 14px; padding: 14px; background: #d8f5ec; border-radius: 10px; color: #085041; font-weight: 600; font-size: 15px; text-align: center; display: none; }
+  @media (max-width: 600px) { .layout { flex-direction: column; } }
+</style>
+</head>
+<body>
+
+<h1>Circle Math Pixel Art Reveal</h1>
+<p class="subtitle">Answer each question correctly to reveal part of the hidden picture! If you get one wrong, read the hint and try again.</p>
+
+<div class="layout">
+  <div class="left-panel">
+    <canvas id="pixelCanvas" width="270" height="270"></canvas>
+    <div class="progress-label">
+      <span>Revealed</span>
+      <span id="revealCount">0 / 10</span>
+    </div>
+    <div class="progress-bar-outer">
+      <div class="progress-bar-inner" id="progressBar" style="width:0%"></div>
+    </div>
+    <div class="formula-box">
+      <strong>Formulas to use:</strong><br>
+      Area = <strong>&pi; &times; r&sup2;</strong><br>
+      Circumference = <strong>&pi; &times; d</strong> &nbsp;or&nbsp; <strong>2 &times; &pi; &times; r</strong><br>
+      Use <strong>&pi; &asymp; 3.14</strong>
+    </div>
+  </div>
+
+  <div class="right-panel" id="questionsContainer"></div>
+</div>
+
+<div class="complete-msg" id="completeMsg">Amazing work! You revealed the full image! You are a circle expert!</div>
+
+<script>
+const COLS = 18, ROWS = 18;
+const rocket = [
+  "000000RRRR000000RR",
+  "00000RFFFFR0000RFF",
+  "0000RFFFFFFFR00RFF",
+  "000RFFFFFFFFFRRFFF",
+  "00RFFFFFFFFFFFR000",
+  "00RFFFFFFFFFFFR000",
+  "00RFFFFFFFFFFFR000",
+  "00RFFFFFFFFFFFR000",
+  "0RFFFFFFFFFFFFFF00",
+  "0RFFFFFFFFFFFFFF00",
+  "0RFFFFFFFFFFFFFF00",
+  "00WWRFFFFFFFFFR000",
+  "000WWRFFFFFFFR0000",
+  "00000RFFFFFFFR0000",
+  "000WRRFFFFFFFRRW00",
+  "00WWRFFFFFFFFFRWW0",
+  "000000RRRRRRR000000",
+  "000000FFFFFFF000000",
+];
+const colorMap = { 'R': '#E24B4A', 'F': '#FAC775', 'W': '#85B7EB', '0': null };
+const grid = [];
+for (let r = 0; r < ROWS; r++) {
+  grid.push([]);
+  for (let c = 0; c < COLS; c++) grid[r].push((rocket[r] || '')[c] || '0');
+}
+const groups = [
+  { i: [[0,6],[0,7],[0,8],[0,9],[1,5],[1,10],[2,4],[2,11],[3,3],[3,12]] },
+  { i: [[4,2],[4,13],[5,2],[5,13],[6,2],[6,13],[7,2],[7,13]] },
+  { i: [[8,1],[8,14],[9,1],[9,14],[10,1],[10,14]] },
+  { i: [[11,2],[11,3],[11,12],[12,3],[12,4],[12,11]] },
+  { i: [[13,5],[13,6],[13,7],[13,8],[13,9],[13,10]] },
+  { i: [[14,3],[14,4],[14,11],[14,12],[15,3],[15,4],[15,11],[15,12]] },
+  { i: [[16,6],[16,7],[16,8],[16,9],[16,10],[16,11],[16,12]] },
+  { i: [[17,6],[17,7],[17,8],[17,9],[17,10],[17,11],[17,12]] },
+  { i: [[4,3],[4,4],[4,5],[4,6],[5,3],[5,4],[5,5],[5,6]] },
+  { i: [[4,7],[4,8],[4,9],[4,10],[4,11],[4,12],[5,7],[5,8],[5,9],[5,10],[5,11],[5,12],[6,3],[6,4],[6,5],[6,6],[6,7],[6,8],[6,9],[6,10],[6,11],[6,12],[7,3],[7,4],[7,5],[7,6],[7,7],[7,8],[7,9],[7,10],[7,11],[7,12]] },
+];
+const questions = [
+  { q: "A circle has a radius of 5 cm. What is the area? (Use π ≈ 3.14)", choices: ["78.5 cm²", "31.4 cm²", "15.7 cm²", "25 cm²"], correct: 0, hint: "Area = π × r² = 3.14 × 5 × 5" },
+  { q: "A circle has a diameter of 10 cm. What is the circumference? (Use π ≈ 3.14)", choices: ["31.4 cm", "62.8 cm", "15.7 cm", "78.5 cm"], correct: 0, hint: "C = π × d = 3.14 × 10" },
+  { q: "A circle has a radius of 3 cm. What is the circumference? (Use π ≈ 3.14)", choices: ["9.42 cm", "18.84 cm", "28.26 cm", "6 cm"], correct: 1, hint: "C = 2 × π × r = 2 × 3.14 × 3" },
+  { q: "A circle has a diameter of 8 cm. What is the radius?", choices: ["4 cm", "16 cm", "8 cm", "2 cm"], correct: 0, hint: "Radius = diameter ÷ 2" },
+  { q: "A circle has a radius of 7 cm. What is the area? (Use π ≈ 3.14)", choices: ["153.86 cm²", "43.96 cm²", "21.98 cm²", "49 cm²"], correct: 0, hint: "Area = π × r² = 3.14 × 7 × 7" },
+  { q: "A circle has a diameter of 6 cm. What is the circumference? (Use π ≈ 3.14)", choices: ["18.84 cm", "28.26 cm", "9.42 cm", "37.68 cm"], correct: 0, hint: "C = π × d = 3.14 × 6" },
+  { q: "A circle has a radius of 10 cm. What is the area? (Use π ≈ 3.14)", choices: ["314 cm²", "62.8 cm²", "31.4 cm²", "100 cm²"], correct: 0, hint: "Area = π × r² = 3.14 × 10 × 10" },
+  { q: "A pizza has a diameter of 14 cm. What is its circumference? (Use π ≈ 3.14)", choices: ["43.96 cm", "21.98 cm", "87.92 cm", "153.86 cm"], correct: 0, hint: "C = π × d = 3.14 × 14" },
+  { q: "A circle has a circumference of 31.4 cm. What is its diameter? (Use π ≈ 3.14)", choices: ["10 cm", "5 cm", "20 cm", "15.7 cm"], correct: 0, hint: "d = C ÷ π = 31.4 ÷ 3.14" },
+  { q: "A circular pond has a radius of 4 cm on a map. What is the area? (Use π ≈ 3.14)", choices: ["50.24 cm²", "25.12 cm²", "16 cm²", "100.48 cm²"], correct: 0, hint: "Area = π × r² = 3.14 × 4 × 4" },
+];
+
+const revealed = new Array(10).fill(false);
+const canvas = document.getElementById('pixelCanvas');
+const ctx = canvas.getContext('2d');
+
+function drawCanvas() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  const cW = canvas.width / COLS, cH = canvas.height / ROWS;
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      const ch = grid[r][c];
+      if (ch === '0') continue;
+      const gi = groups.findIndex(g => g.i.some(([gr, gc]) => gr === r && gc === c));
+      ctx.fillStyle = (gi >= 0 && revealed[gi]) ? colorMap[ch] : '#D3D1C7';
+      ctx.fillRect(c * cW + 1, r * cH + 1, cW - 2, cH - 2);
+    }
+  }
+}
+
+function updateProgress() {
+  const count = revealed.filter(Boolean).length;
+  document.getElementById('revealCount').textContent = count + ' / 10';
+  document.getElementById('progressBar').style.width = (count * 10) + '%';
+  if (count === 10) document.getElementById('completeMsg').style.display = 'block';
+}
+
+function resetQuestion(qIdx) {
+  const card = document.getElementById('card-' + qIdx);
+  card.classList.remove('correct', 'wrong', 'answered');
+  const badge = card.querySelector('.badge');
+  if (badge) badge.remove();
+  const tryBtn = card.querySelector('.try-again-btn');
+  if (tryBtn) tryBtn.remove();
+  document.getElementById('hint-' + qIdx).style.display = 'none';
+  card.querySelectorAll('.choice-btn').forEach(b => {
+    b.disabled = false;
+    b.classList.remove('correct-ans', 'wrong-ans');
+  });
+}
+
+function handleAnswer(qIdx, choiceIdx, btn, choicesDiv) {
+  const card = document.getElementById('card-' + qIdx);
+  if (card.classList.contains('answered')) return;
+  card.classList.add('answered');
+
+  const btns = choicesDiv.querySelectorAll('button');
+  btns.forEach(b => b.disabled = true);
+
+  const badge = document.createElement('span');
+  badge.className = 'badge';
+
+  if (choiceIdx === questions[qIdx].correct) {
+    btn.classList.add('correct-ans');
+    card.classList.add('correct');
+    badge.classList.add('badge-correct');
+    badge.textContent = 'Correct!';
+    revealed[qIdx] = true;
+    drawCanvas();
+    updateProgress();
+  } else {
+    btn.classList.add('wrong-ans');
+    card.classList.add('wrong');
+    badge.classList.add('badge-wrong');
+    badge.textContent = 'Not quite — try again!';
+    document.getElementById('hint-' + qIdx).style.display = 'block';
+
+    const tryBtn = document.createElement('button');
+    tryBtn.className = 'try-again-btn';
+    tryBtn.textContent = 'Try again';
+    tryBtn.onclick = () => resetQuestion(qIdx);
+    choicesDiv.insertAdjacentElement('afterend', tryBtn);
+  }
+
+  card.querySelector('.q-label').appendChild(badge);
+}
+
+function buildQuestions() {
+  const container = document.getElementById('questionsContainer');
+  questions.forEach((q, i) => {
+    const card = document.createElement('div');
+    card.className = 'q-card';
+    card.id = 'card-' + i;
+
+    const label = document.createElement('div');
+    label.className = 'q-label';
+    label.textContent = 'Question ' + (i + 1);
+
+    const qText = document.createElement('div');
+    qText.className = 'q-text';
+    qText.textContent = q.q;
+
+    const hint = document.createElement('div');
+    hint.className = 'hint';
+    hint.id = 'hint-' + i;
+    hint.textContent = 'Hint: ' + q.hint;
+
+    const choices = document.createElement('div');
+    choices.className = 'choices';
+    q.choices.forEach((ch, ci) => {
+      const btn = document.createElement('button');
+      btn.className = 'choice-btn';
+      btn.textContent = ch;
+      btn.onclick = () => handleAnswer(i, ci, btn, choices);
+      choices.appendChild(btn);
+    });
+
+    card.appendChild(label);
+    card.appendChild(qText);
+    card.appendChild(hint);
+    card.appendChild(choices);
+    container.appendChild(card);
+  });
+}
+
+buildQuestions();
+drawCanvas();
+updateProgress();
+</script>
+</body>
+</html>
